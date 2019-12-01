@@ -21,8 +21,9 @@ function irrigation()
 
     function ydot = irrigation_system(y, t, tau, y_ref, u, d) 
         ydot(1) = y_ref(1);
-        ydot(2) = u{1}(t - tau(2), y) - u{2}(t, y) - d(t);
-        ydot(3) = u{2}(t - tau(3), y) - u{3}(t, y) - d(t);
+        ydot(2) = u{1}(t - tau(2), y, y_ref) - u{2}(t, y, y_ref) - d(t);
+        ydot(3) = u{2}(t - tau(3), y, y_ref) - u{3}(t, y, y_ref) - d(t);
+        ydot(4) = u{3}(t - tau(4), y, y_ref) - u{4}(t, y, y_ref) - d(t);
     end
 
     function d = disturbance(r, x)
@@ -33,7 +34,7 @@ function irrigation()
             dt = d;
         end 
 
-        d = d * 5;
+        d = d + 1;
     end
 
     #
@@ -41,40 +42,52 @@ function irrigation()
     #
     t0 = 0;
     dt = 0.01;
-    T = 100;
-    t = t0 : dt : T;
+    T = t0 + 100;
+    chunks = 4;
+    dT = T / chunks;
 
     #
     # initial conditions
     #
-    y0 = [0 0 0];
+    y0 = [0 0 0 0];
 
     #
     # values that the controllers will try to achieve 
     #
-    y_ref = [0 0 40];
+    y_ref = [
+        -1 100 50 25
+        -1 150 75 40
+        -1 100 90 50
+        -1 95 50 25
+    ];
 
     #
     # feedback functions
     #
-    Tff = @(x, t) x + disturbance(3.9, mod(t, 100));
-    Tf = @(x, t) x + disturbance(3.8, mod(t, 100)); 
-    d = @(t) 10 + disturbance(3.7, mod(t, 100));
+    Tff = @(x, t) disturbance(3.9, mod(t, 100 + x))/2;
+    Tf = @(x, t) disturbance(3.8, mod(t, 100 + x)); 
+    d = @(t) 5 + disturbance(3.9, mod(t, 100));
 
     #
     # controllers
     #
-    tau = [1 1 1];
+    tau = [10 10 10 10];
     u{length(y_ref)} = @(t,y) 0;
     for i = length(y_ref)-1 : -1 : 1
-        u{i} = @(t, y) Tff(i, t) * (d(i) + u{i+1}(t,y)) + Tf(i, t) * (y_ref(i+1) - y(i+1))
+        u{i} = @(t, y, y_ref) Tff(i, t) * (d(i) + u{i+1}(t,y,y_ref)) + Tf(i, t) * (y_ref(i+1) - y(i+1))
     end
 
-    f = @(y, t) irrigation_system(y, t, tau, y_ref, u, d);
-    trajectory = lsode(f, y0, t);
+    for i = 1 : chunks
+        t = (i-1)*dT : dt : i*dT;
 
-    hold on;
-    plot(t, trajectory(:,2));
-    plot(t, trajectory(:,3));
+        f = @(y, t) irrigation_system(y, t, tau, y_ref(i, :), u, d);
+        trajectory = lsode(f, y0, t);
+
+        hold on;
+        plot(t, trajectory(:,2), "r");
+        plot(t, trajectory(:,3), "g");
+        plot(t, trajectory(:,4), "b");
+        y0 = trajectory(length(trajectory), :);
+    end
 
 end
